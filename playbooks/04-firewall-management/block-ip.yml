@@ -1,0 +1,31 @@
+---
+- name: Block IP address
+  hosts: "{{ target_hosts }}"
+  gather_facts: false
+  
+  vars:
+    block_ip: "{{ ip_address }}"
+    block_reason: "{{ reason | default('Blocked by AWX') }}"
+  
+  tasks:
+    - name: Add to address list
+      community.routeros.command:
+        commands:
+          - /ip firewall address-list add list=blocked-ips address={{ block_ip }} comment="{{ block_reason }}"
+      ignore_errors: true
+    
+    - name: Add drop rule (if not exists)
+      community.routeros.command:
+        commands:
+          - /ip firewall filter add chain=input src-address-list=blocked-ips action=drop comment="Drop blocked IPs" place-before=0
+      ignore_errors: true
+    
+    - name: Verify block
+      community.routeros.command:
+        commands:
+          - /ip firewall address-list print where address="{{ block_ip }}"
+      register: block_verify
+    
+    - name: Display result
+      debug:
+        msg: "IP {{ block_ip }} blocked on {{ inventory_hostname }}"

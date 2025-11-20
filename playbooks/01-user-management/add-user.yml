@@ -1,0 +1,49 @@
+---
+- name: Add user to MikroTik routers
+  hosts: "{{ target_hosts | default('mikrotik_all') }}"
+  gather_facts: false
+  
+  vars:
+    username: "{{ new_username }}"
+    password: "{{ new_password }}"
+    group: "{{ user_group | default('read') }}"
+    comment: "{{ user_comment | default('Created by AWX') }}"
+  
+  tasks:
+    - name: Check RouterOS version
+      community.routeros.command:
+        commands:
+          - /system resource print
+      register: ros_check
+    
+    - name: Check if user exists
+      community.routeros.command:
+        commands:
+          - /user print where name="{{ username }}"
+      register: user_exists
+      ignore_errors: true
+    
+    - name: Add user (RouterOS 6 and 7)
+      community.routeros.command:
+        commands:
+          - /user add name={{ username }} password={{ password }} group={{ group }} comment="{{ comment }}"
+      when: user_exists.stdout == ""
+      register: user_added
+      no_log: true
+    
+    - name: User already exists
+      debug:
+        msg: "User {{ username }} already exists on {{ inventory_hostname }}"
+      when: user_exists.stdout != ""
+    
+    - name: User added successfully
+      debug:
+        msg: "User {{ username }} added to {{ inventory_hostname }}"
+      when: user_added is changed
+    
+    - name: Generate report
+      local_action:
+        module: lineinfile
+        path: "/tmp/mikrotik-user-report-{{ ansible_date_time.date }}.txt"
+        line: "{{ inventory_hostname }},{{ ansible_host }},{{ username }},{{ 'Added' if user_added is changed else 'Already Exists' }}"
+        create: yes

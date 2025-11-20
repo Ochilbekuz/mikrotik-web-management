@@ -1,0 +1,47 @@
+---
+- name: List firewall rules
+  hosts: "{{ target_hosts | default('mikrotik_all') }}"
+  gather_facts: false
+  
+  vars:
+    chain_filter: "{{ chain | default('') }}"
+  
+  tasks:
+    - name: Get all firewall rules
+      community.routeros.command:
+        commands:
+          - "/ip firewall filter print detail{% if chain_filter %} where chain={{ chain_filter }}{% endif %}"
+      register: firewall_rules
+    
+    - name: Get NAT rules
+      community.routeros.command:
+        commands:
+          - /ip firewall nat print detail
+      register: nat_rules
+    
+    - name: Get Mangle rules
+      community.routeros.command:
+        commands:
+          - /ip firewall mangle print detail
+      register: mangle_rules
+    
+    - name: Display filter rules
+      debug:
+        msg: "{{ firewall_rules.stdout_lines }}"
+    
+    - name: Generate firewall report
+      local_action:
+        module: copy
+        content: |
+          # Firewall Configuration - {{ inventory_hostname }}
+          Date: {{ ansible_date_time.iso8601 }}
+          
+          ## Filter Rules:
+          {{ firewall_rules.stdout[0] }}
+          
+          ## NAT Rules:
+          {{ nat_rules.stdout[0] }}
+          
+          ## Mangle Rules:
+          {{ mangle_rules.stdout[0] }}
+        dest: "/tmp/firewall-{{ inventory_hostname }}.txt"

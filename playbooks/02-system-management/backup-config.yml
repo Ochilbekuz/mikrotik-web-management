@@ -1,0 +1,54 @@
+---
+- name: Backup MikroTik configuration
+  hosts: "{{ target_hosts | default('mikrotik_all') }}"
+  gather_facts: false
+  
+  vars:
+    backup_name: "{{ backup_prefix | default('awx-backup') }}-{{ ansible_date_time.date }}"
+    export_name: "{{ backup_prefix | default('awx-export') }}-{{ ansible_date_time.date }}"
+  
+  tasks:
+    - name: Create binary backup
+      community.routeros.command:
+        commands:
+          - /system backup save name={{ backup_name }}
+      register: backup_result
+    
+    - name: Create export file
+      community.routeros.command:
+        commands:
+          - /export file={{ export_name }}
+      register: export_result
+    
+    - name: Wait for backup files
+      pause:
+        seconds: 5
+    
+    - name: Get backup file list
+      community.routeros.command:
+        commands:
+          - /file print where name~"{{ backup_name }}"
+      register: backup_files
+    
+    - name: Download backup via SCP (requires SSH)
+      ansible.builtin.shell: |
+        sshpass -p "{{ ansible_password }}" scp -o StrictHostKeyChecking=no \
+          {{ ansible_user }}@{{ ansible_host }}:{{ backup_name }}.backup \
+          /tmp/backups/{{ inventory_hostname }}-{{ backup_name }}.backup
+      delegate_to: localhost
+      ignore_errors: true
+    
+    - name: Download export via SCP
+      ansible.builtin.shell: |
+        sshpass -p "{{ ansible_password }}" scp -o StrictHostKeyChecking=no \
+          {{ ansible_user }}@{{ ansible_host }}:{{ export_name }}.rsc \
+          /tmp/backups/{{ inventory_hostname }}-{{ export_name }}.rsc
+      delegate_to: localhost
+      ignore_errors: true
+    
+    - name: Backup report
+      debug:
+        msg: |
+          Backup created on {{ inventory_hostname }}:
+          - Binary: {{ backup_name }}.backup
+          - Export: {{ export_name }}.rsc

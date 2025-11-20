@@ -1,0 +1,32 @@
+---
+- name: Configure IP addresses
+  hosts: "{{ target_hosts }}"
+  gather_facts: false
+  
+  vars:
+    interface: "{{ target_interface }}"
+    ip_address: "{{ ip_addr }}"
+    netmask: "{{ ip_netmask }}"
+    comment: "{{ ip_comment | default('Configured by AWX') }}"
+  
+  tasks:
+    - name: Check interface exists
+      community.routeros.command:
+        commands:
+          - /interface print where name="{{ interface }}"
+      register: interface_check
+    
+    - name: Fail if interface doesn't exist
+      fail:
+        msg: "Interface {{ interface }} not found"
+      when: interface_check.stdout == ""
+    
+    - name: Add IP address
+      community.routeros.command:
+        commands:
+          - /ip address add address={{ ip_address }}/{{ netmask }} interface={{ interface }} comment="{{ comment }}"
+      register: ip_added
+    
+    - name: Display result
+      debug:
+        msg: "IP {{ ip_address }}/{{ netmask }} added to {{ interface }} on {{ inventory_hostname }}"

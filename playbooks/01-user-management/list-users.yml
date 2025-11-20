@@ -1,0 +1,25 @@
+---
+- name: List all users on MikroTik routers
+  hosts: "{{ target_hosts | default('mikrotik_all') }}"
+  gather_facts: false
+  
+  tasks:
+    - name: Get RouterOS version
+      community.routeros.command:
+        commands:
+          - /system resource print
+      register: system_info
+    
+    - name: Get all users
+      community.routeros.command:
+        commands:
+          - /user print detail
+      register: users_list
+    
+    - name: Display users
+      debug:
+        msg: |
+          Router: {{ inventory_hostname }} ({{ ansible_host }})
+          Location: {{ location }}
+          RouterOS: {{ ros_version }}
+          Users: {{ users_list.stdout_lines }}

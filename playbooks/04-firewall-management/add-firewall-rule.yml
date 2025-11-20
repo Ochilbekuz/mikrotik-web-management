@@ -1,0 +1,28 @@
+---
+- name: Add firewall rule
+  hosts: "{{ target_hosts }}"
+  gather_facts: false
+  
+  vars:
+    fw_chain: "{{ chain }}"
+    fw_action: "{{ action }}"
+    fw_protocol: "{{ protocol | default('') }}"
+    fw_src_address: "{{ src_address | default('') }}"
+    fw_dst_address: "{{ dst_address | default('') }}"
+    fw_dst_port: "{{ dst_port | default('') }}"
+    fw_comment: "{{ comment | default('Added by AWX') }}"
+  
+  tasks:
+    - name: Build firewall command
+      set_fact:
+        fw_command: "/ip firewall filter add chain={{ fw_chain }} action={{ fw_action }}{% if fw_protocol %} protocol={{ fw_protocol }}{% endif %}{% if fw_src_address %} src-address={{ fw_src_address }}{% endif %}{% if fw_dst_address %} dst-address={{ fw_dst_address }}{% endif %}{% if fw_dst_port %} dst-port={{ fw_dst_port }}{% endif %} comment=\"{{ fw_comment }}\""
+    
+    - name: Add firewall rule
+      community.routeros.command:
+        commands:
+          - "{{ fw_command }}"
+      register: rule_added
+    
+    - name: Display result
+      debug:
+        msg: "Firewall rule added: {{ fw_command }}"

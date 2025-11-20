@@ -1,0 +1,50 @@
+---
+- name: Update RouterOS
+  hosts: "{{ target_hosts }}"
+  gather_facts: false
+  serial: 1
+  
+  vars:
+    auto_reboot: "{{ enable_auto_reboot | default('no') }}"
+  
+  tasks:
+    - name: Create backup before update
+      community.routeros.command:
+        commands:
+          - /system backup save name=before-update-{{ ansible_date_time.epoch }}
+    
+    - name: Check for updates
+      community.routeros.command:
+        commands:
+          - /system package update check-for-updates
+      register: update_check
+    
+    - name: Display update info
+      debug:
+        var: update_check.stdout_lines
+    
+    - name: Download updates
+      community.routeros.command:
+        commands:
+          - /system package update download
+      when: "'New version is available' in update_check.stdout"
+      register: download_result
+    
+    - name: Wait for download
+      pause:
+        seconds: 30
+      when: download_result is changed
+    
+    - name: Install updates and reboot
+      community.routeros.command:
+        commands:
+          - /system package update install
+      when: 
+        - download_result is changed
+        - auto_reboot == 'yes'
+      register: install_result
+    
+    - name: Reboot notification
+      debug:
+        msg: "Router {{ inventory_hostname }} is rebooting for update"
+      when: install_result is changed

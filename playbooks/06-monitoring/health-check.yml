@@ -1,0 +1,56 @@
+---
+- name: Router health check
+  hosts: "{{ target_hosts | default('mikrotik_all') }}"
+  gather_facts: false
+  
+  tasks:
+    - name: Get system resources
+      community.routeros.command:
+        commands:
+          - /system resource print
+      register: resources
+    
+    - name: Get CPU load
+      set_fact:
+        cpu_load: "{{ resources.stdout[0] | regex_search('cpu-load: (\\d+)%', '\\1') | first }}"
+    
+    - name: Get memory usage
+      set_fact:
+        memory_used: "{{ resources.stdout[0] | regex_search('free-memory: ([\\d.]+[A-Z]+)', '\\1') | first }}"
+    
+    - name: Get uptime
+      set_fact:
+        uptime: "{{ resources.stdout[0] | regex_search('uptime: (.+)', '\\1') | first }}"
+    
+    - name: Check interfaces
+      community.routeros.command:
+        commands:
+          - /interface print stats
+      register: interfaces
+    
+    - name: Check for errors
+      community.routeros.command:
+        commands:
+          - /log print where message~"error|critical|failure" count=10
+      register: errors
+    
+    - name: Health status
+      debug:
+        msg: |
+          Router: {{ inventory_hostname }}
+          CPU Load: {{ cpu_load }}%
+          Free Memory: {{ memory_used }}
+          Uptime: {{ uptime }}
+          Recent Errors: {{ errors.stdout_lines | length }}
+    
+    - name: Alert if CPU high
+      debug:
+        msg: "WARNING: High CPU load on {{ inventory_hostname }}"
+      when: cpu_load | int > 80
+    
+    - name: Generate health report
+      local_action:
+        module: lineinfile
+        path: "/tmp/health-check-report.txt"
+        line: "{{ ansible_date_time.iso8601 }},{{ inventory_hostname }},{{ ansible_host }},{{ cpu_load }},{{ memory_used }},{{ uptime }}"
+        create: yes

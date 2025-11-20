@@ -1,0 +1,29 @@
+---
+- name: Get router logs
+  hosts: "{{ target_hosts | default('mikrotik_all') }}"
+  gather_facts: false
+  
+  vars:
+    log_topics: "{{ topics | default('') }}"
+    log_count: "{{ count | default('100') }}"
+  
+  tasks:
+    - name: Get logs
+      community.routeros.command:
+        commands:
+          - "/log print{% if log_topics %} where topics~\"{{ log_topics }}\"{% endif %} count={{ log_count }}"
+      register: logs
+    
+    - name: Save logs to file
+      local_action:
+        module: copy
+        content: |
+          # Logs from {{ inventory_hostname }}
+          # Date: {{ ansible_date_time.iso8601 }}
+          
+          {{ logs.stdout[0] }}
+        dest: "/tmp/logs-{{ inventory_hostname }}-{{ ansible_date_time.epoch }}.txt"
+    
+    - name: Display recent logs
+      debug:
+        var: logs.stdout_lines

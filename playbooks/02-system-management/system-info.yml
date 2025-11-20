@@ -1,0 +1,47 @@
+---
+- name: Get system information
+  hosts: "{{ target_hosts | default('mikrotik_all') }}"
+  gather_facts: false
+  
+  tasks:
+    - name: Get system identity
+      community.routeros.command:
+        commands:
+          - /system identity print
+      register: identity
+    
+    - name: Get system resources
+      community.routeros.command:
+        commands:
+          - /system resource print
+      register: resources
+    
+    - name: Get RouterBoard info
+      community.routeros.command:
+        commands:
+          - /system routerboard print
+      register: routerboard
+      ignore_errors: true
+    
+    - name: Get uptime
+      community.routeros.command:
+        commands:
+          - /system resource print
+      register: uptime
+    
+    - name: Get license
+      community.routeros.command:
+        commands:
+          - /system license print
+      register: license
+    
+    - name: Generate system report
+      local_action:
+        module: template
+        src: ../templates/system-report.j2
+        dest: "/tmp/system-report-{{ inventory_hostname }}.txt"
+      vars:
+        system_identity: "{{ identity.stdout_lines }}"
+        system_resources: "{{ resources.stdout_lines }}"
+        system_routerboard: "{{ routerboard.stdout_lines }}"
+        system_license: "{{ license.stdout_lines }}"

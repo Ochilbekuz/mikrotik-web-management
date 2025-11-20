@@ -1,0 +1,30 @@
+---
+- name: Remove user from MikroTik routers
+  hosts: "{{ target_hosts | default('mikrotik_all') }}"
+  gather_facts: false
+  
+  vars:
+    username: "{{ remove_username }}"
+  
+  tasks:
+    - name: Prevent removing critical users
+      fail:
+        msg: "Cannot remove admin or ansible users!"
+      when: username in ['admin', 'ansible']
+    
+    - name: Check if user exists
+      community.routeros.command:
+        commands:
+          - /user print where name="{{ username }}"
+      register: user_check
+    
+    - name: Remove user
+      community.routeros.command:
+        commands:
+          - /user remove [find name="{{ username }}"]
+      when: user_check.stdout != ""
+      register: user_removed
+    
+    - name: Report
+      debug:
+        msg: "{{ 'User removed' if user_removed is changed else 'User not found' }}"

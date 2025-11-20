@@ -1,0 +1,61 @@
+---
+- name: Bulk user management
+  hosts: "{{ target_hosts | default('mikrotik_all') }}"
+  gather_facts: false
+  serial: "{{ batch_size | default(10) }}"
+  
+  vars:
+    users_to_remove: "{{ remove_users | default([]) }}"
+    users_to_add: "{{ add_users | default([]) }}"
+    passwords_to_change: "{{ change_passwords | default([]) }}"
+  
+  tasks:
+    - name: Create backup before changes
+      community.routeros.command:
+        commands:
+          - /system backup save name=before-user-changes
+    
+    - name: Remove users
+      community.routeros.command:
+        commands:
+          - /user remove [find name="{{ item }}"]
+      loop: "{{ users_to_remove }}"
+      when: 
+        - users_to_remove | length > 0
+        - item not in ['admin', 'ansible']
+      ignore_errors: true
+    
+    - name: Add new users
+      community.routeros.command:
+        commands:
+          - /user add name={{ item.name }} password={{ item.password }} group={{ item.group | default('read') }} comment="{{ item.comment | default('Bulk created') }}"
+      loop: "{{ users_to_add }}"
+      when: users_to_add | length > 0
+      no_log: true
+      ignore_errors: true
+    
+    - name: Change passwords
+      community.routeros.command:
+        commands:
+          - /user set [find name="{{ item.name }}"] password="{{ item.password }}"
+      loop: "{{ passwords_to_change }}"
+      when: passwords_to_change | length > 0
+      no_log: true
+    
+    - name: Get final user list
+      community.routeros.command:
+        commands:
+          - /user print
+      register: final_users
+    
+    - name: Generate report
+      local_action:
+        module: copy
+        content: |
+          # User Management Report - {{ inventory_hostname }}
+          Date: {{ ansible_date_time.iso8601 }}
+          Router: {{ inventory_hostname }} ({{ ansible_host }})
+          
+          ## Final User List:
+          {{ final_users.stdout[0] }}
+        dest: "/tmp/user-report-{{ inventory_hostname }}.txt"

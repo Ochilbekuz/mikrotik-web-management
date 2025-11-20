@@ -1,0 +1,37 @@
+---
+- name: Restore MikroTik configuration
+  hosts: "{{ target_hosts }}"
+  gather_facts: false
+  serial: 1
+  
+  vars:
+    backup_file: "{{ restore_backup_file }}"
+    confirm_restore: "{{ confirm | default('no') }}"
+  
+  tasks:
+    - name: Safety check
+      fail:
+        msg: "You must set confirm=yes to proceed with restore"
+      when: confirm_restore != 'yes'
+    
+    - name: Create pre-restore backup
+      community.routeros.command:
+        commands:
+          - /system backup save name=before-restore-{{ ansible_date_time.epoch }}
+    
+    - name: Upload backup file
+      ansible.builtin.shell: |
+        sshpass -p "{{ ansible_password }}" scp -o StrictHostKeyChecking=no \
+          {{ backup_file }} \
+          {{ ansible_user }}@{{ ansible_host }}:/restore.backup
+      delegate_to: localhost
+    
+    - name: Restore configuration
+      community.routeros.command:
+        commands:
+          - /system backup load name=restore.backup
+      register: restore_result
+    
+    - name: Router will reboot
+      debug:
+        msg: "Router {{ inventory_hostname }} will reboot in few seconds"

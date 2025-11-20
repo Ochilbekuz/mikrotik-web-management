@@ -1,0 +1,43 @@
+---
+- name: Configure DHCP Server
+  hosts: "{{ target_hosts }}"
+  gather_facts: false
+  
+  vars:
+    dhcp_name: "{{ dhcp_server_name }}"
+    dhcp_interface: "{{ interface }}"
+    dhcp_network: "{{ network }}"
+    dhcp_gateway: "{{ gateway }}"
+    dhcp_dns: "{{ dns_servers | default('8.8.8.8') }}"
+    dhcp_range_start: "{{ range_start }}"
+    dhcp_range_end: "{{ range_end }}"
+    lease_time: "{{ dhcp_lease_time | default('1d') }}"
+  
+  tasks:
+    - name: Create IP pool
+      community.routeros.command:
+        commands:
+          - /ip pool add name={{ dhcp_name }}-pool ranges={{ dhcp_range_start }}-{{ dhcp_range_end }}
+      ignore_errors: true
+    
+    - name: Create DHCP network
+      community.routeros.command:
+        commands:
+          - /ip dhcp-server network add address={{ dhcp_network }} gateway={{ dhcp_gateway }} dns-server={{ dhcp_dns }}
+      ignore_errors: true
+    
+    - name: Create DHCP server
+      community.routeros.command:
+        commands:
+          - /ip dhcp-server add name={{ dhcp_name }} interface={{ dhcp_interface }} address-pool={{ dhcp_name }}-pool lease-time={{ lease_time }} disabled=no
+      ignore_errors: true
+    
+    - name: Display DHCP server
+      community.routeros.command:
+        commands:
+          - /ip dhcp-server print detail where name="{{ dhcp_name }}"
+      register: dhcp_info
+    
+    - name: Show result
+      debug:
+        var: dhcp_info.stdout_lines
