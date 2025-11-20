@@ -5,50 +5,61 @@
   serial: 20
   
   vars:
-    # Survey dan keladi yoki default
     username: "{{ remove_username | default('') }}"
   
   tasks:
-    # Input validation
-    - name: Check if username is provided
+    - name: Validate username
       fail:
         msg: "❌ Username is required!"
       when: username == '' or username is not defined
+      run_once: true
+      delegate_to: localhost
     
-    # Safety checks
     - name: Prevent removing critical users
       fail:
         msg: "❌ Cannot remove admin or ansible users!"
       when: username in ['admin', 'ansible']
+      run_once: true
+      delegate_to: localhost
     
-    # Main task
     - name: Check if user exists
       community.routeros.command:
         commands:
           - /user print where name="{{ username }}"
       register: user_check
+      ignore_errors: true
     
-    - name: Remove user
+    - name: Debug user_check
+      debug:
+        var: user_check
+      when: ansible_verbosity >= 2
+    
+    - name: Remove user if exists
       community.routeros.command:
         commands:
           - /user remove [find name="{{ username }}"]
       when: 
+        - user_check is succeeded
         - user_check.stdout is defined
-        - user_check.stdout != ""
+        - user_check.stdout | length > 0
+        - '": name=' + username in user_check.stdout[0]'
       register: user_removed
+      ignore_errors: true
     
-    # Reporting
-    - name: Success
+    - name: Report success
       debug:
-        msg: "✅ User {{ username }} removed from {{ company | default(inventory_hostname) }}"
+        msg: "✅ User '{{ username }}' removed from {{ company | default(inventory_hostname) }}"
       when: user_removed is changed
     
-    - name: Not found
+    - name: Report not found
       debug:
-        msg: "⚠️ User {{ username }} not found on {{ company | default(inventory_hostname) }}"
+        msg: "⚠️ User '{{ username }}' not found on {{ company | default(inventory_hostname) }}"
       when: 
+        - user_check is succeeded
         - user_check.stdout is defined
-        - user_check.stdout == ""
-```
-
----
+        - (user_check.stdout | length == 0 or username not in user_check.stdout[0])
+    
+    - name: Report error
+      debug:
+        msg: "❌ Failed to check/remove user on {{ company | default(inventory_hostname) }}: {{ user_check.msg | default('Connection error') }}"
+      when: user_check is failed
