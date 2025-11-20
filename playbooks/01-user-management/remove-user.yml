@@ -1,7 +1,8 @@
 ---
 - name: Remove user from MikroTik routers
-  hosts: "{{ target_hosts | default('mikrotik_all') }}"
+  hosts: "{{ target_hosts | default('all') }}"
   gather_facts: false
+  serial: 20  # ← 20 ta routerda bir vaqtda bajariladi
   
   vars:
     username: "{{ remove_username }}"
@@ -9,7 +10,7 @@
   tasks:
     - name: Prevent removing critical users
       fail:
-        msg: "Cannot remove admin or ansible users!"
+        msg: "❌ Cannot remove admin or ansible users!"
       when: username in ['admin', 'ansible']
     
     - name: Check if user exists
@@ -25,6 +26,12 @@
       when: user_check.stdout != ""
       register: user_removed
     
-    - name: Report
+    - name: Success message
       debug:
-        msg: "{{ 'User removed' if user_removed is changed else 'User not found' }}"
+        msg: "✅ {{ username }} removed from {{ inventory_hostname }}"
+      when: user_removed is changed
+    
+    - name: Not found message
+      debug:
+        msg: "⚠️ {{ username }} not found on {{ inventory_hostname }}"
+      when: user_check.stdout == ""
