@@ -11,7 +11,7 @@
     - name: Validate username
       fail:
         msg: "❌ Username is required!"
-      when: username == '' or username is not defined
+      when: username == ''
       run_once: true
       delegate_to: localhost
     
@@ -29,12 +29,7 @@
       register: user_check
       ignore_errors: true
     
-    - name: Debug user_check
-      debug:
-        var: user_check
-      when: ansible_verbosity >= 2
-    
-    - name: Remove user if exists
+    - name: Remove user (if exists)
       community.routeros.command:
         commands:
           - /user remove [find name="{{ username }}"]
@@ -42,24 +37,25 @@
         - user_check is succeeded
         - user_check.stdout is defined
         - user_check.stdout | length > 0
-        - '": name=' + username in user_check.stdout[0]'
       register: user_removed
       ignore_errors: true
     
-    - name: Report success
+    - name: Report - Success
       debug:
         msg: "✅ User '{{ username }}' removed from {{ company | default(inventory_hostname) }}"
-      when: user_removed is changed
+      when: 
+        - user_removed is defined
+        - user_removed is changed
     
-    - name: Report not found
+    - name: Report - Not found
       debug:
         msg: "⚠️ User '{{ username }}' not found on {{ company | default(inventory_hostname) }}"
       when: 
         - user_check is succeeded
         - user_check.stdout is defined
-        - (user_check.stdout | length == 0 or username not in user_check.stdout[0])
+        - user_check.stdout | length == 0
     
-    - name: Report error
+    - name: Report - Connection error
       debug:
-        msg: "❌ Failed to check/remove user on {{ company | default(inventory_hostname) }}: {{ user_check.msg | default('Connection error') }}"
+        msg: "❌ Connection failed to {{ company | default(inventory_hostname) }}"
       when: user_check is failed
