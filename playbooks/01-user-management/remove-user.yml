@@ -1,37 +1,61 @@
 ---
-- name: Remove user from MikroTik routers
+- name: Remove user from ALL MikroTik routers
   hosts: "{{ target_hosts | default('all') }}"
   gather_facts: false
-  serial: 20  # ← 20 ta routerda bir vaqtda bajariladi
+  serial: 20  # 20 ta parallel
   
   vars:
     username: "{{ remove_username }}"
   
   tasks:
+    # Safety checks
     - name: Prevent removing critical users
       fail:
         msg: "❌ Cannot remove admin or ansible users!"
       when: username in ['admin', 'ansible']
     
+    # Main task
     - name: Check if user exists
       community.routeros.command:
         commands:
           - /user print where name="{{ username }}"
       register: user_check
+      ignore_errors: true
     
     - name: Remove user
       community.routeros.command:
         commands:
           - /user remove [find name="{{ username }}"]
-      when: user_check.stdout != ""
+      when: user_check.stdout is defined and user_check.stdout != ""
       register: user_removed
     
-    - name: Success message
+    # Reporting
+    - name: Log result
       debug:
-        msg: "✅ {{ username }} removed from {{ inventory_hostname }}"
-      when: user_removed is changed
-    
-    - name: Not found message
+        msg: |
+          {% if user_removed is changed %}
+          ✅ SUCCESS: User {{ username }} removed from {{ company }} ({{ inventory_hostname }})
+          {% elif user_check.stdout == "" %}
+          ⚠️ SKIP: User {{ username }} not found on {{ company }} ({{ inventory_hostname }})
+          {% else %}
+          ❌ FAILED: Could not process {{ company }} ({{ inventory_hostname }})
+          {% endif %}
+
+# Summary report
+- name: Generate summary
+  hosts: localhost
+  gather_facts: false
+  run_once: true
+  
+  tasks:
+    - name: Display summary
       debug:
-        msg: "⚠️ {{ username }} not found on {{ inventory_hostname }}"
-      when: user_check.stdout == ""
+        msg: |
+          ╔═══════════════════════════════════════════╗
+          ║     USER REMOVAL SUMMARY REPORT          ║
+          ╠═══════════════════════════════════════════╣
+          ║ Username: {{ remove_username }}                 
+          ║ Target: {{ target_hosts }}                      
+          ║ Total Routers: {{ ansible_play_hosts_all | length }}
+          ║ Status: COMPLETED                        
+          ╚═══════════════════════════════════════════╝
