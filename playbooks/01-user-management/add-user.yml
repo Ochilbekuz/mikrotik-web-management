@@ -1,7 +1,8 @@
 ---
 - name: Add user to MikroTik routers
-  hosts: "{{ target_hosts | default('mikrotik_all') }}"
+  hosts: "{{ target_hosts | default('all') }}"
   gather_facts: false
+  serial: 20
   
   vars:
     username: "{{ new_username }}"
@@ -10,40 +11,53 @@
     comment: "{{ user_comment | default('Created by AWX') }}"
   
   tasks:
-    - name: Check RouterOS version
-      community.routeros.command:
-        commands:
-          - /system resource print
-      register: ros_check
+    - name: Validate inputs
+      fail:
+        msg: "❌ Username and password are required!"
+      when: username == '' or password == ''
+      run_once: true
+      delegate_to: localhost
     
-    - name: Check if user exists
+    - name: Check password length
+      fail:
+        msg: "❌ Password must be at least 8 characters!"
+      when: password | length < 8
+      run_once: true
+      delegate_to: localhost
+    
+    - name: Check if user already exists
       community.routeros.command:
         commands:
           - /user print where name="{{ username }}"
-      register: user_exists
+      register: user_check
       ignore_errors: true
     
-    - name: Add user (RouterOS 6 and 7)
+    - name: Add new user (if not exists)
       community.routeros.command:
         commands:
           - /user add name={{ username }} password={{ password }} group={{ group }} comment="{{ comment }}"
-      when: user_exists.stdout == ""
+      when: 
+        - user_check is succeeded
+        - user_check.stdout is defined
+        - user_check.stdout | length == 0
       register: user_added
       no_log: true
+      ignore_errors: true
     
-    - name: User already exists
+    - name: Report - User added
       debug:
-        msg: "User {{ username }} already exists on {{ inventory_hostname }}"
-      when: user_exists.stdout != ""
-    
-    - name: User added successfully
-      debug:
-        msg: "User {{ username }} added to {{ inventory_hostname }}"
+        msg: "✅ User '{{ username }}' added to {{ company | default(inventory_hostname) }} with group '{{ group }}'"
       when: user_added is changed
     
-    - name: Generate report
-      local_action:
-        module: lineinfile
-        path: "/tmp/mikrotik-user-report-{{ ansible_date_time.date }}.txt"
-        line: "{{ inventory_hostname }},{{ ansible_host }},{{ username }},{{ 'Added' if user_added is changed else 'Already Exists' }}"
-        create: yes
+    - name: Report - User already exists
+      debug:
+        msg: "⚠️ User '{{ username }}' already exists on {{ company | default(inventory_hostname) }}"
+      when: 
+        - user_check is succeeded
+        - user_check.stdout is defined
+        - user_check.stdout | length > 0
+    
+    - name: Report - Connection error
+      debug:
+        msg: "❌ Connection failed to {{ company | default(inventory_hostname) }}"
+      when: user_check is failed
