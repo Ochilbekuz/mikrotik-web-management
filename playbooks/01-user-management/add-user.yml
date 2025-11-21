@@ -5,8 +5,8 @@
   serial: 20
   
   vars:
-    username: "{{ new_username }}"
-    password: "{{ new_password }}"
+    username: "{{ new_username | default('') }}"
+    password: "{{ new_password | default('') }}"
     group: "{{ user_group | default('read') }}"
     comment: "{{ user_comment | default('Created by AWX') }}"
   
@@ -14,7 +14,7 @@
     - name: Validate inputs
       fail:
         msg: "❌ Username and password are required!"
-      when: username == '' or password == ''
+      when: username == '' or password == '' or username is not defined or password is not defined
       run_once: true
       delegate_to: localhost
     
@@ -47,7 +47,9 @@
     - name: Report - User added
       debug:
         msg: "✅ User '{{ username }}' added to {{ company | default(inventory_hostname) }} with group '{{ group }}'"
-      when: user_added is changed
+      when: 
+        - user_added is defined
+        - user_added is changed
     
     - name: Report - User already exists
       debug:
